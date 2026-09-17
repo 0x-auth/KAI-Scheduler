@@ -88,8 +88,8 @@ const (
 	KaiFractionContainerAnnotationPrefix = "kai.scheduler/container."
 	GpuMemoryPortionLimitSuffix          = ".gpu-memory.portion.limit"
 
-	// gpu-sharing operator statuses
-	NvFractionNodeReadyConditionType = "gpu-sharing.nvidia.com/Ready"
+	// kai-gpu-fractioning statuses
+	NvFractionNodeReadyConditionType = "gpu-fractioning.nvidia.com/Ready"
 )
 
 // QueueValidatedVersions returns the list of queue versions that we validate with a webhook. This will be used by the
