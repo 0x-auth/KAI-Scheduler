@@ -39,7 +39,8 @@ func (p *Plugin) PreBind(
 
 	cudaDeviceMemoryLimit, err := calculateCudaDeviceMemoryLimit(node, bindRequest)
 	if err != nil {
-		return nil
+		return fmt.Errorf("failed to calculate CUDA_DEVICE_MEMORY_LIMIT for pod <%s/%s>: %w",
+			pod.Namespace, pod.Name, err)
 	}
 
 	containerRef, err := resources.GetFractionContainerRef(pod)
