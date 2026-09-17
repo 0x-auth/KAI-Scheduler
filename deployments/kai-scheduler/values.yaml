@@ -279,7 +279,7 @@ nodescaleadjuster:
 
 crdupgrader:
   image:
-    name: crd-upgrader
+    name: helm-hooks
     pullPolicy: IfNotPresent
     # registry: ""  # Optional: Override global.registry (e.g. to mirror only the hook image)
     # tag: ""  # Optional: Override global.tag or Chart.AppVersion
@@ -304,7 +304,7 @@ kaiConfigDeployer:
   # (see docs/gitops/README.md).
   enabled: true
   image:
-    name: crd-upgrader
+    name: helm-hooks
     pullPolicy: IfNotPresent
     # registry: ""  # Optional: Override global.registry (e.g. to mirror only the hook image)
     # tag: ""  # Optional: Override global.tag or Chart.AppVersion
@@ -323,7 +323,7 @@ topologyMigration:
   # The migrated topologies will have an annotation indicating they were migrated
   enabled: true
   image:
-    name: crd-upgrader
+    name: helm-hooks
     pullPolicy: IfNotPresent
     # tag: ""  # Optional: Override global.tag or Chart.AppVersion
   resources:
@@ -336,8 +336,7 @@ topologyMigration:
 postCleanup:
   enabled: true
   image:
-    # using crd-upgrader image for kubectl availability
-    name: crd-upgrader
+    name: helm-hooks
     pullPolicy: IfNotPresent
     # tag: ""  # Optional: Override global.tag or Chart.AppVersion
   # Name of the ServiceAccount used by the post-delete hook Job.
