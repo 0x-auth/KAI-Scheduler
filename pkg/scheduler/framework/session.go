@@ -76,6 +76,7 @@ type Session struct {
 	NodePreOrderFns                       []api.NodePreOrderFn
 	NodeOrderFns                          []api.NodeOrderFn
 	JobOrderFns                           []common_info.CompareFn
+	VictimOrderFns                        []common_info.CompareFn
 	SubGroupOrderFns                      []common_info.CompareFn
 	TaskOrderFns                          []common_info.CompareFn
 	QueueOrderFns                         []api.CompareQueueFn
@@ -193,7 +194,8 @@ func (ssn *Session) FittingGPUs(node *node_info.NodeInfo, pod *pod_info.PodInfo)
 func filterGpusByEnoughResources(node *node_info.NodeInfo, pod *pod_info.PodInfo) []string {
 	filteredGPUs := []string{}
 	for gpuIdx := range node.UsedSharedGPUsMemory {
-		if node.IsTaskFitOnGpuGroup(&pod.GpuRequirement, gpuIdx) {
+		if node.IsTaskFitOnGpuGroup(&pod.GpuRequirement, gpuIdx) &&
+			node.IsGpuGroupComputeSharingModeCompatible(gpuIdx, pod) {
 			filteredGPUs = append(filteredGPUs, gpuIdx)
 		}
 	}
@@ -434,6 +436,7 @@ func (ssn *Session) clear() {
 	ssn.NodePreOrderFns = nil
 	ssn.NodeOrderFns = nil
 	ssn.JobOrderFns = nil
+	ssn.VictimOrderFns = nil
 	ssn.SubGroupOrderFns = nil
 	ssn.TaskOrderFns = nil
 	ssn.QueueOrderFns = nil

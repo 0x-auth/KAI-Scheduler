@@ -18,7 +18,7 @@ CHANGIE ?= $(LOCALBIN)/changie
 
 # Space seperated list of services to build by default
 # SERVICE_NAMES := service1 service2 service3
-SERVICE_NAMES := podgrouper scheduler binder resourcereservation snapshot-tool scalingpod nodescaleadjuster podgroupcontroller queuecontroller fairshare-simulator admission operator time-based-fairshare-simulator numa-placement-exporter
+SERVICE_NAMES := podgrouper scheduler binder resourcereservation snapshot-tool scalingpod nodescaleadjuster podgroupcontroller queuecontroller fairshare-simulator admission operator time-based-fairshare-simulator numa-placement-exporter helm-hooks
 
 # Kubernetes manifest files that require Kubernetes copyright header (space-separated)
 K8S_COPYRIGHTED_MANIFEST_FILES := deployments/kai-scheduler/crds/kai.scheduler_topologies.yaml
@@ -27,8 +27,13 @@ K8S_COPYRIGHTED_MANIFEST_FILES := deployments/kai-scheduler/crds/kai.scheduler_t
 lint: fmt-go vet-go lint-go
 .PHONY: lint
 
+.PHONY: chart-deps
+chart-deps:
+	@echo "Fetching Helm chart dependencies: kai-scheduler"
+	helm dependency build ./deployments/kai-scheduler
+
 .PHONY: test-chart
-test-chart:
+test-chart: chart-deps
 	@echo "Running tests for Helm chart: kai-scheduler"
 	docker run -t --rm -v ./deployments/kai-scheduler:/apps helmunittest/helm-unittest:3.17.2-0.8.1 . -f 'tests/**/*_test.yaml'
 
@@ -37,7 +42,6 @@ test: test-chart envtest-docker-go
 
 .PHONY: build
 build: $(SERVICE_NAMES)
-	$(MAKE) docker-build-crd-upgrader
 
 $(SERVICE_NAMES):
 	$(MAKE) build-go SERVICE_NAME=$@
@@ -45,7 +49,6 @@ $(SERVICE_NAMES):
 
 .PHONY: push
 push: $(SERVICE_NAMES)
-	docker push $(DOCKER_REPO_BASE)/crd-upgrader:$(VERSION)
 
 .PHONY: validate
 validate: generate manifests clients gen-license generate-mocks lint
@@ -139,6 +142,11 @@ changelog-preview: changie ## Preview the next release section without writing a
 	@test -n "$(VERSION)" || { echo "VERSION is required, e.g. make changelog-preview VERSION=v0.17.0"; exit 1; }
 	$(CHANGIE) batch $(VERSION) --dry-run
 
+.PHONY: images-manifest
+images-manifest: ## Generate images.yaml for a release. Usage: make images-manifest VERSION=v0.17.0 DOCKER_REPO_BASE=ghcr.io/kai-scheduler/kai-scheduler
+	@test -n "$(VERSION)" || { echo "VERSION is required, e.g. make images-manifest VERSION=v0.17.0"; exit 1; }
+	bash hack/generate-images-manifest.sh "$(VERSION)" "$(DOCKER_REPO_BASE)" "$(SERVICE_NAMES)" > images.yaml
+
 
 
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
@@ -148,18 +156,13 @@ $(KUSTOMIZE): $(LOCALBIN)
 	test -s $(LOCALBIN)/kustomize || { curl -Ss $(KUSTOMIZE_INSTALL_SCRIPT) --output install_kustomize.sh && bash install_kustomize.sh $(subst v,,$(KUSTOMIZE_VERSION)) $(LOCALBIN); rm install_kustomize.sh; }
 
 # Benchmark targets
-BENCHSTAT ?= $(LOCALBIN)/benchstat
+BENCHSTAT ?= go tool benchstat
 BENCH_OUTPUT ?= benchmark-results.txt
 # pkg/scheduler/actions/reclaim is excluded from the default benchmark sweep
 # because some reclaim benchmarks require -benchtime=1x and only a curated subset
 # should run in CI.
 BENCH_SPECIAL_PACKAGES := ./pkg/scheduler/actions/reclaim
 BENCH_SPECIAL_REGEX := '^BenchmarkReclaim(WithMissingPVCJobs|UnschedulableDistributedJob_((10|50|100)Node|AntiAffinity100Node))$$'
-
-.PHONY: benchstat
-benchstat: $(BENCHSTAT)
-$(BENCHSTAT): $(LOCALBIN)
-	test -s $(LOCALBIN)/benchstat || GOBIN=$(LOCALBIN) go install golang.org/x/perf/cmd/benchstat@latest
 
 .PHONY: benchmark
 benchmark: envtest ## Run benchmarks and output results (use BENCH_OUTPUT=file.txt to customize output)
@@ -176,6 +179,6 @@ benchmark-docker: builder gocache ## Run benchmarks in Docker
 	${DOCKER_GO_COMMAND} make benchmark
 
 .PHONY: benchmark-compare
-benchmark-compare: benchstat ## Compare benchmark results (requires baseline.txt and benchmark-results.txt)
+benchmark-compare: ## Compare benchmark results (requires baseline.txt and benchmark-results.txt)
 	@echo "Comparing benchmarks..."
 	$(BENCHSTAT) baseline.txt benchmark-results.txt

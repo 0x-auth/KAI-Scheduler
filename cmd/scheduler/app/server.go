@@ -47,6 +47,7 @@ import (
 
 	"github.com/kai-scheduler/KAI-scheduler/cmd/scheduler/app/options"
 	"github.com/kai-scheduler/KAI-scheduler/cmd/scheduler/profiling"
+	kaiv1common "github.com/kai-scheduler/KAI-scheduler/pkg/apis/kai/v1/common"
 	"github.com/kai-scheduler/KAI-scheduler/pkg/scheduler"
 	"github.com/kai-scheduler/KAI-scheduler/pkg/scheduler/actions"
 	"github.com/kai-scheduler/KAI-scheduler/pkg/scheduler/conf"
@@ -96,7 +97,7 @@ func BuildSchedulerParams(opt *options.ServerOption) *conf.SchedulerParams {
 		NodePoolLabelValue: opt.NodePoolLabelValue,
 	}
 
-	return &conf.SchedulerParams{
+	params := &conf.SchedulerParams{
 		SchedulerName:                     opt.SchedulerName,
 		RestrictSchedulingNodes:           opt.RestrictSchedulingNodes,
 		PartitionParams:                   schedulingPartitionParams,
@@ -113,6 +114,11 @@ func BuildSchedulerParams(opt *options.ServerOption) *conf.SchedulerParams {
 		UpdatePodEvictionCondition:        opt.UpdatePodEvictionCondition,
 		QueueLabelKey:                     opt.QueueLabelKey,
 	}
+	if opt.GpuSharingMode != "" {
+		gpuSharingMode := kaiv1common.GpuSharingMode(opt.GpuSharingMode)
+		params.GpuSharingMode = &gpuSharingMode
+	}
+	return params
 }
 
 func RunApp() error {
@@ -180,7 +186,6 @@ func setConfig(so *options.ServerOption) {
 	config.MIGWorkerNodeLabelKey = so.MIGWorkerNodeLabelKey
 }
 
-// +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 
 func Run(ctx context.Context, opt *options.ServerOption, config *restclient.Config, mux *http.ServeMux) error {

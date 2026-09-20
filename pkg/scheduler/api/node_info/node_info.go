@@ -416,7 +416,9 @@ func (ni *NodeInfo) addTask(task *pod_info.PodInfo, allowTaskToExistOnDifferentG
 
 	ni.addTaskResources(task)
 	ni.addTaskStorage(task)
-	ni.PodAffinityInfo.AddPod(task.Pod)
+	if !excludedFromPodAffinity(task) {
+		ni.PodAffinityInfo.AddPod(task.Pod)
+	}
 	return nil
 }
 
@@ -472,6 +474,10 @@ func (ni *NodeInfo) addTaskResources(task *pod_info.PodInfo) {
 		resourcesToTrackVector.Set(resource_info.GPUIndex, 0)
 	}
 
+	// A physical DRA device shared by several pods (one ResourceClaim with
+	// multiple reservedFor entries) must be counted once, not once per pod.
+	ni.dedupSharedDRAGpus(task, resourcesToTrackVector)
+
 	// DRA-backed extended resources are absent from node.Status.Allocatable and must
 	// not be charged against the node's vector — the DRA allocator handles them.
 	for i := range len(resourcesToTrackVector) {
@@ -498,6 +504,17 @@ func (ni *NodeInfo) addTaskResources(task *pod_info.PodInfo) {
 		task.Namespace, task.Name, task.Status, ni)
 }
 
+// excludedFromPodAffinity reports whether a task is left out of the node's inter-pod
+// affinity index: only tasks this scheduling cycle has itself evicted (Releasing with a
+// virtual status, set by Statement.Evict). Their resources are already treated as
+// future-free and any placement onto them is Pipelined, never bound while they are still
+// on the node, so keeping them indexed only makes required (anti-)affinity against the
+// victims fail in every reclaim/preempt scenario. Pods terminating independently in the
+// cluster stay indexed, matching kube-scheduler, which keeps a pod until its delete event.
+func excludedFromPodAffinity(task *pod_info.PodInfo) bool {
+	return task.Status == pod_status.Releasing && task.IsVirtualStatus
+}
+
 func (ni *NodeInfo) RemoveTask(ti *pod_info.PodInfo) error {
 	key := pod_info.PodKey(ti.Pod)
 
@@ -513,9 +530,12 @@ func (ni *NodeInfo) RemoveTask(ti *pod_info.PodInfo) error {
 
 	ni.removeTaskStorage(task)
 	ni.removeTaskResources(task)
-	err := ni.PodAffinityInfo.RemovePod(task.Pod)
-
-	return err
+	// task is the stored clone, so this is the state addTask indexed under: a task that was
+	// never added to the index must not be removed from it (k8s NodeInfo.RemovePod fails).
+	if excludedFromPodAffinity(task) {
+		return nil
+	}
+	return ni.PodAffinityInfo.RemovePod(task.Pod)
 }
 
 func (ni *NodeInfo) removeTaskResources(task *pod_info.PodInfo) {
@@ -529,6 +549,10 @@ func (ni *NodeInfo) removeTaskResources(task *pod_info.PodInfo) {
 		// Reservation pod: untrack all resources except GPUs
 		resourcesToTrackVector.Set(resource_info.GPUIndex, 0)
 	}
+
+	// Mirror of dedupSharedDRAGpus: keep a shared physical DRA device in the
+	// used vector as long as another pod on the node still references it.
+	ni.releaseSharedDRAGpus(task, resourcesToTrackVector)
 
 	// Mirror the zeroing done in addTaskResources so vectors stay consistent.
 	for i := range len(resourcesToTrackVector) {
@@ -662,7 +686,7 @@ func getNodeGpuMemory(node *v1.Node) (int64, bool) {
 		gpuMemoryLabelValue = convertBytesToMib(gpuMemoryLabelValue)
 	}
 
-	return gpuMemoryLabelValue - (gpuMemoryLabelValue % 100), true // Floor the memory count to make sure its divided by 100 so there will not be 2 jobs that get same bytes
+	return gpuMemoryLabelValue, true
 }
 
 func checkGpuMemoryIsInMib(gpuMemoryValue int64) bool {
@@ -757,6 +781,13 @@ func (ni *NodeInfo) lessEqualTaskToNodeResources(
 ) bool {
 	if !ni.isValidGpuPortion(&task.GpuRequirement) {
 		return false
+	}
+	// A task sharing an already-counted DRA device does not need additional
+	// GPU capacity for that device.
+	if discount := ni.sharedDRAGpuDiscount(task); discount > 0 {
+		adjusted := nodeResourcesVector.Clone()
+		adjusted.Set(resource_info.GPUIndex, adjusted.Get(resource_info.GPUIndex)+discount)
+		return task.ResReqVector.LessEqual(adjusted)
 	}
 	return task.ResReqVector.LessEqual(nodeResourcesVector)
 }

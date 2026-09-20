@@ -118,7 +118,7 @@ func (s *SchedulerForShard) deploymentForShard(
 			Value: strconv.FormatInt(goMemLimit, 10),
 		})
 	}
-	deployment.Spec.Template.Spec.Containers[0].Env = env
+	deployment.Spec.Template.Spec.Containers[0].Env = append(deployment.Spec.Template.Spec.Containers[0].Env, env...)
 	deployment.Spec.Template.Spec.Containers[0].Args = containerArgs
 	deployment.Spec.Template.Spec.Volumes = []corev1.Volume{
 		{
@@ -361,6 +361,10 @@ func buildArgsList(
 		fmt.Sprintf("--%s=%s", "partition-label-value", shard.Spec.PartitionLabelValue),
 		fmt.Sprintf("--%s=%s", "resource-reservation-app-label", *kaiConfig.Spec.Binder.ResourceReservation.AppLabel),
 		fmt.Sprintf("--%s=%s", "queue-label-key", *kaiConfig.Spec.Global.QueueLabelKey),
+	}
+
+	if kaiConfig.Spec.Global.GpuSharingMode != nil {
+		args = append(args, fmt.Sprintf("--%s=%s", "gpu-sharing-mode", *kaiConfig.Spec.Global.GpuSharingMode))
 	}
 
 	if kaiConfig.Spec.Scheduler.SchedulerService.Port != nil {

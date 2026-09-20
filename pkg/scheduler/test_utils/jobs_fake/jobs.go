@@ -205,12 +205,12 @@ func generateTasks(
 	for taskIndex, task := range job.Tasks {
 		gpuGroups := tasks_fake.GetTestTaskGPUIndex(task)
 
-		podResourceList, gpuMemory, gpuFraction, gpuGroups :=
+		podResourceList, gpuMemoryMiB, gpuFraction, gpuGroups :=
 			CalcJobAndPodResources(job, jobAllocatedResource, task, gpuGroups,
 				usedSharedGPUs)
 
 		podOfTask := createPodOfTask(job, taskIndex, task, podResourceList, gpuFraction,
-			gpuMemory, gpuGroups)
+			gpuMemoryMiB, gpuGroups)
 		if job.QOSClass != "" {
 			podOfTask.Status.QOSClass = job.QOSClass
 		}
@@ -226,7 +226,7 @@ func generateTasks(
 
 		taskInfo := pod_info.NewTaskInfo(podOfTask, vectorMap, pod_info.TaskInfoOptions{DraPodClaims: draPodClaims})
 		taskInfo.Status = task.State
-		taskInfo.GPUGroups = gpuGroups
+		taskInfo.SetGPUGroupIDs(gpuGroups)
 		taskInfo.SubGroupName = task.SubGroupName
 		taskInfo.IsLegacyMIGtask = task.IsLegacyMigTask
 		taskInfos = append(taskInfos, taskInfo)
@@ -243,7 +243,7 @@ func generateTasks(
 		}
 
 		if tasks_fake.IsTaskStartedStatus(taskInfo.Status) {
-			gpuName := taskInfo.NodeName + fmt.Sprint(taskInfo.GPUGroups)
+			gpuName := taskInfo.NodeName + fmt.Sprint(taskInfo.GPUGroupIDs())
 			if _, ok := allocatedGPUs[gpuName]; !ok {
 				var void interface{}
 				allocatedGPUs[gpuName] = void
@@ -278,10 +278,10 @@ func getDraClaimsForPod(task *tasks_fake.TestTaskBasic, draClaimsMap map[string]
 
 func CalcJobAndPodResources(job *TestJobBasic, jobAllocatedResource *resource_info.Resource,
 	task *tasks_fake.TestTaskBasic, gpuGroups []string,
-	usedSharedGPUs map[string]map[string]bool) (*v1.ResourceList, string, string, []string) {
+	usedSharedGPUs map[string]map[string]bool) (*v1.ResourceList, uint64, string, []string) {
 	var podResourceList *v1.ResourceList
 	var gpuFraction string
-	var gpuMemory string
+	var gpuMemoryMiB uint64
 	if job.IsBestEffortJob {
 		podResourceList =
 			resources_fake.BuildResourceList(nil, nil, nil, nil)
@@ -292,7 +292,7 @@ func CalcJobAndPodResources(job *TestJobBasic, jobAllocatedResource *resource_in
 		requiredMemoryInput = CalcRequiredMemory(job, requiredMemoryAsString, requiredMemoryInput)
 
 		// whole GPU job
-		gpuMemory = strconv.FormatUint(job.RequiredGpuMemory, 10)
+		gpuMemoryMiB = job.RequiredGpuMemory
 		if float64(int(job.RequiredGPUsPerTask)) == job.RequiredGPUsPerTask {
 			requiredGPUsAsString = strconv.Itoa(int(job.RequiredGPUsPerTask))
 		} else {
@@ -305,7 +305,7 @@ func CalcJobAndPodResources(job *TestJobBasic, jobAllocatedResource *resource_in
 
 	(*podResourceList)[v1.ResourcePods] = resource.MustParse("1")
 
-	return podResourceList, gpuMemory, gpuFraction, gpuGroups
+	return podResourceList, gpuMemoryMiB, gpuFraction, gpuGroups
 }
 
 func CalcRequiredMemory(job *TestJobBasic, requiredMemoryAsString string, requiredMemoryInput *string) *string {
@@ -352,9 +352,9 @@ func resourceFractionCalc(job *TestJobBasic, jobAllocatedResource *resource_info
 
 func createPodOfTask(job *TestJobBasic, taskIndex int,
 	task *tasks_fake.TestTaskBasic, podResourceList *v1.ResourceList,
-	gpuFraction string, gpuMemory string, gpuGroups []string) *v1.Pod {
+	gpuFraction string, gpuMemoryMiB uint64, gpuGroups []string) *v1.Pod {
 	podName := fmt.Sprintf("%s-%d", job.Name, taskIndex)
-	podOfTask := tasks_fake.BuildPod(podName, job.Namespace, task, v1.PodPending, *podResourceList, gpuFraction, gpuMemory,
+	podOfTask := tasks_fake.BuildPod(podName, job.Namespace, task, v1.PodPending, *podResourceList, gpuFraction, gpuMemoryMiB,
 		gpuGroups, job.Name)
 	addPersistentVolumeClaimVolumes(podOfTask, task.PersistentVolumeClaimNames)
 

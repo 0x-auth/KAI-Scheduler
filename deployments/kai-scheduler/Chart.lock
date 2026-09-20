@@ -1,0 +1,6 @@
+dependencies:
+- name: gpu-fractioning
+  repository: oci://ghcr.io/kai-scheduler/kai-gpu-fractioning
+  version: v0.1.1
+digest: sha256:58b0c7cfe387a27886a2bb4e8526d7383ce6756777838238a7a0c8bec026b71f
+generated: "2026-09-16T12:46:36.758362+03:00"
