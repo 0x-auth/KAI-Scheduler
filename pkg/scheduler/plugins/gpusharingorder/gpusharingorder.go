@@ -34,7 +34,7 @@ func (g *gpuSharingOrderPlugin) nodeOrderFn(pod *pod_info.PodInfo, node *node_in
 	}
 
 	for gpuGroup := range node.UsedSharedGPUsMemory {
-		if !node.IsTaskFitOnGpuGroup(&pod.GpuRequirement, gpuGroup) {
+		if !node.IsTaskFitOnGpuGroup(pod, gpuGroup) {
 			continue
 		}
 
@@ -43,8 +43,10 @@ func (g *gpuSharingOrderPlugin) nodeOrderFn(pod *pod_info.PodInfo, node *node_in
 		score = scores.GpuSharing
 	}
 
-	log.InfraLogger.V(7).Infof("Estimating Task: <%v/%v> Job: <%v> for node: <%s>. Score: %f",
-		pod.Namespace, pod.Name, pod.Job, node.Name, score)
+	log.InfraLogger.V(7).Do(func() {
+		log.InfraLogger.Infof("Estimating Task: <%v/%v> Job: <%v> for node: <%s>. Score: %f",
+			pod.Namespace, pod.Name, pod.Job, node.Name, score)
+	})
 	return score, nil
 }
 
